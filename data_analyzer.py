@@ -54,15 +54,37 @@ class DataAnalyzer:
         self.load_pdfs()
         self.build_context()
 
+    #def load_excel(self):
+    #    """Load and validate the Excel file."""
+    #    try:
+    #        self.df = pd.read_excel(self.excel_path)
+    #        print(f"Excel file loaded successfully with {len(self.df)} rows and {len(self.df.columns)} columns.")
+    #        print(f"Columns: {', '.join(self.df.columns)}")
+    #    except Exception as e:
+    #        print(f"Error loading Excel file: {e}")
+    #        raise
     def load_excel(self):
-        """Load and validate the Excel file."""
-        try:
-            self.df = pd.read_excel(self.excel_path)
-            print(f"Excel file loaded successfully with {len(self.df)} rows and {len(self.df.columns)} columns.")
-            print(f"Columns: {', '.join(self.df.columns)}")
-        except Exception as e:
-            print(f"Error loading Excel file: {e}")
-            raise
+    """Load and validate the Excel file."""
+    try:
+        # Be explicit about which row to use as header
+        self.df = pd.read_excel(self.excel_path, header=0)  # Use first row as header
+        
+        # If first row shows as "None" or unnamed columns, try using second row
+        if any("Unnamed" in str(col) for col in self.df.columns) or any(col is None for col in self.df.columns):
+            self.df = pd.read_excel(self.excel_path, header=1)  # Try second row as header
+            
+        # Ensure all column names are strings
+        self.df.columns = [str(col) for col in self.df.columns]
+        
+        # Drop any completely empty rows/columns
+        self.df = self.df.dropna(how='all')
+        self.df = self.df.dropna(axis=1, how='all')
+        
+        print(f"Excel file loaded successfully with {len(self.df)} rows and {len(self.df.columns)} columns.")
+        print(f"Columns: {', '.join([str(col) for col in self.df.columns])}")
+    except Exception as e:
+        print(f"Error loading Excel file: {e}")
+        raise
 
     def load_sops(self):
         """Load SOP files from the specified directory."""
