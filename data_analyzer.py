@@ -201,26 +201,82 @@ Excel Data Summary:
         """
         print(f"Context built with {self._num_tokens(self.context)} tokens.")
 
+    #def _summarize_excel_data(self):
+    #    """Create a summary of the Excel data."""
+    #    if self.df is None:
+    #        return "No Excel data loaded."
+    # 
+    #    summary = f"Dataset contains {len(self.df)} rows and {len(self.df.columns)} columns.\n"
+    #    summary += f"Columns: {', '.join(self.df.columns)}\n\n"
+    #
+    #    # Add sample data
+    #    summary += "Sample data (first 5 rows):\n"
+    #    summary += self.df.head(5).to_string() + "\n\n"
+    #
+    #   # Add basic statistics
+    #    summary += "Basic statistics:\n"
+    #    for col in self.df.columns:
+    #        if pd.api.types.is_numeric_dtype(self.df[col]):
+    #            stats = self.df[col].describe()
+    #            summary += f"{col}: min={stats['min']}, max={stats['max']}, avg={stats['mean']:.2f}\n"
+    #
+    #    return summary
+
     def _summarize_excel_data(self):
-        """Create a summary of the Excel data."""
-        if self.df is None:
-            return "No Excel data loaded."
-
-        summary = f"Dataset contains {len(self.df)} rows and {len(self.df.columns)} columns.\n"
-        summary += f"Columns: {', '.join(self.df.columns)}\n\n"
-
-        # Add sample data
-        summary += "Sample data (first 5 rows):\n"
-        summary += self.df.head(5).to_string() + "\n\n"
-
-        # Add basic statistics
-        summary += "Basic statistics:\n"
-        for col in self.df.columns:
-            if pd.api.types.is_numeric_dtype(self.df[col]):
-                stats = self.df[col].describe()
-                summary += f"{col}: min={stats['min']}, max={stats['max']}, avg={stats['mean']:.2f}\n"
-
-        return summary
+    """Create a more comprehensive and clear summary of the Excel data."""
+    if self.df is None:
+        return "No Excel data loaded."
+    
+    summary = f"Dataset contains {len(self.df)} rows and {len(self.df.columns)} columns.\n"
+    
+    # Explicitly describe each column with its type
+    summary += "Column structure:\n"
+    for col in self.df.columns:
+        col_type = str(self.df[col].dtype)
+        unique_count = self.df[col].nunique()
+        
+        # Add sample values for categorical columns
+        if pd.api.types.is_object_dtype(self.df[col]) and unique_count < 10:
+            sample_values = ", ".join([f"'{val}'" for val in self.df[col].dropna().unique()[:5]])
+            summary += f"- {col} (type: {col_type}, unique values: {unique_count}, examples: {sample_values})\n"
+        else:
+            summary += f"- {col} (type: {col_type}, unique values: {unique_count})\n"
+    
+    summary += "\n"
+    
+    # Add sample data with explicit column headers
+    summary += "Sample data (first 5 rows with column headers):\n"
+    # Create a copy with reset index to show row numbers clearly
+    sample_df = self.df.head(5).reset_index(drop=True)
+    summary += sample_df.to_string() + "\n\n"
+    
+    # Add aggregated statistics for key columns
+    summary += "=== Aggregated Statistics ===\n"
+    
+    # Check if specific columns exist and add relevant summaries
+    if 'Region' in self.df.columns and 'Revenue' in self.df.columns:
+        region_revenue = self.df.groupby('Region')['Revenue'].sum().reset_index()
+        summary += "Revenue by Region:\n"
+        summary += region_revenue.to_string() + "\n\n"
+    
+    if 'Product_Category' in self.df.columns and 'Revenue' in self.df.columns:
+        category_revenue = self.df.groupby('Product_Category')['Revenue'].sum().reset_index()
+        summary += "Revenue by Product Category:\n"
+        summary += category_revenue.to_string() + "\n\n"
+    
+    if 'Channel' in self.df.columns and 'Revenue' in self.df.columns:
+        channel_revenue = self.df.groupby('Channel')['Revenue'].sum().reset_index()
+        summary += "Revenue by Channel:\n"
+        summary += channel_revenue.to_string() + "\n\n"
+    
+    # Add basic statistics for numeric columns
+    summary += "Basic statistics for numeric columns:\n"
+    for col in self.df.columns:
+        if pd.api.types.is_numeric_dtype(self.df[col]):
+            stats = self.df[col].describe()
+            summary += f"{col}: min={stats['min']}, max={stats['max']}, avg={stats['mean']:.2f}, sum={self.df[col].sum()}\n"
+    
+    return summary
 
     def _num_tokens(self, text):
         """Count the number of tokens in the text."""
