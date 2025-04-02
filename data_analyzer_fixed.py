@@ -44,7 +44,7 @@ class DataAnalyzer:
         """Load and validate the Excel file."""
         try:
             # Try reading with specific header row
-            self.df = pd.read_excel(self.excel_path, header=1)
+            self.df = pd.read_excel(self.excel_path, header=0)
 
             # Drop any completely empty rows
             self.df = self.df.dropna(how='all')
