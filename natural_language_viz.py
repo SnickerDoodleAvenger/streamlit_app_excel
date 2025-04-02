@@ -294,12 +294,36 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
                         label="Download Visualization as HTML",
                         data=fig.to_html(),
                         file_name=f"{viz_type}_visualization.html",
-                        mime="text/html"
+                        mime="text/html",
+                        key="download_nl_viz_html"
                     )
 
                     # Show used parameters for advanced users
                     with st.expander("View Visualization Parameters"):
                         st.json(params)
+
+                    # Generate insights about the visualization
+                    with st.spinner("Generating insights..."):
+                        insights = session_state.visualizer.generate_visualization_insights(
+                            fig, 
+                            viz_type, 
+                            params, 
+                            data_for_viz,
+                            api_key
+                        )
+    
+                        # Display insights
+                        st.subheader("Visualization Insights")
+                        st.markdown(insights)
+    
+                        # Download insights
+                        st.download_button(
+                            label="Download Insights",
+                            data=insights,
+                            file_name=f"{viz_type}_insights.md",
+                            mime="text/markdown",
+                            key="download_nl_viz_insights"
+                        )
 
             except Exception as e:
                 st.error(f"Error creating visualization: {str(e)}")
