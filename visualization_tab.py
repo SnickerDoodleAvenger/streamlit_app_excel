@@ -365,22 +365,49 @@ def add_visualization_tab(app_tabs, analyzer, session_state):
                                        value=f"Sankey Diagram of {value_column} from {source_column} to {target_column}")
             }
 
-        # Generate and display the visualization
-        if st.button("Generate Visualization"):
+       # Generate and display the visualization
+        if st.button("Generate Visualization", key="standard_viz_generate_button"):
             try:
                 with st.spinner("Creating visualization..."):
                     fig = session_state.visualizer.create_visualization(**params)
-
+            
                     # Display the visualization
                     st.subheader("Visualization Result")
                     st.plotly_chart(fig, use_container_width=True)
-
+            
                     # Download options
                     st.download_button(
                         label="Download Visualization as HTML",
                         data=fig.to_html(),
                         file_name=f"{params['viz_type']}_{params.get('title', 'visualization').replace(' ', '_')}.html",
-                        mime="text/html"
+                        mime="text/html",
+                        key="download_viz_html"
                     )
+            
+                    # Get API key for insights
+                    api_key = os.environ.get("OPENAI_API_KEY", "")
+            
+                    # Generate insights
+                    with st.spinner("Generating insights..."):
+                        insights = session_state.visualizer.generate_visualization_insights(
+                            fig, 
+                            params["viz_type"], 
+                            params, 
+                            session_state.filtered_data if session_state.filters_applied else session_state.excel_data,
+                            api_key
+                        )
+                
+                        # Display insights
+                        st.subheader("Visualization Insights")
+                        st.markdown(insights)
+                
+                        # Download insights
+                        st.download_button(
+                            label="Download Insights",
+                            data=insights,
+                            file_name=f"{params['viz_type']}_insights.md",
+                            mime="text/markdown",
+                            key="download_viz_insights"
+                        )
             except Exception as e:
                 st.error(f"Error creating visualization: {str(e)}")
