@@ -63,25 +63,69 @@ class DataAnalyzer:
     #    except Exception as e:
     #        print(f"Error loading Excel file: {e}")
     #        raise
+    #def load_excel(self):
+    #"""Load and validate the Excel file."""
+    #try:
+    #    # Be explicit about which row to use as header
+    #    self.df = pd.read_excel(self.excel_path, header=0)  # Use first row as header
+    #    
+    #    # If first row shows as "None" or unnamed columns, try using second row
+    #    if any("Unnamed" in str(col) for col in self.df.columns) or any(col is None for col in self.df.columns):
+    #        self.df = pd.read_excel(self.excel_path, header=1)  # Try second row as header
+    #        
+    #    # Ensure all column names are strings
+    #    self.df.columns = [str(col) for col in self.df.columns]
+    #    
+    #    # Drop any completely empty rows/columns
+    #    self.df = self.df.dropna(how='all')
+    #    self.df = self.df.dropna(axis=1, how='all')
+    #    
+    #    print(f"Excel file loaded successfully with {len(self.df)} rows and {len(self.df.columns)} columns.")
+    #    print(f"Columns: {', '.join([str(col) for col in self.df.columns])}")
+    #except Exception as e:
+    #    print(f"Error loading Excel file: {e}")
+    #    raise
+
     def load_excel(self):
-    """Load and validate the Excel file."""
+    """Load and validate the Excel file with improved header detection."""
     try:
-        # Be explicit about which row to use as header
-        self.df = pd.read_excel(self.excel_path, header=0)  # Use first row as header
+        # First, read a few rows to examine the data structure
+        preview_df = pd.read_excel(self.excel_path, header=None, nrows=5)
         
-        # If first row shows as "None" or unnamed columns, try using second row
-        if any("Unnamed" in str(col) for col in self.df.columns) or any(col is None for col in self.df.columns):
-            self.df = pd.read_excel(self.excel_path, header=1)  # Try second row as header
+        # Determine the likely header row
+        header_row = 0  # Default to first row
+        
+        # Check if the first row looks like a header
+        first_row = preview_df.iloc[0]
+        second_row = preview_df.iloc[1]
+        
+        # If the first row contains mostly None/NaN or numeric values, it's probably not a header
+        if first_row.isna().mean() > 0.5 or pd.to_numeric(first_row, errors='coerce').notna().mean() > 0.5:
+            header_row = 1  # Use second row as header
             
-        # Ensure all column names are strings
-        self.df.columns = [str(col) for col in self.df.columns]
+        # Now load with the determined header row
+        self.df = pd.read_excel(self.excel_path, header=header_row)
         
+        # Clean up column names - remove whitespace and ensure they're strings
+        self.df.columns = [str(col).strip() for col in self.df.columns]
+        
+        # Replace any remaining unnamed columns with meaningful names
+        for i, col in enumerate(self.df.columns):
+            if "Unnamed" in col or not col or col.isspace():
+                self.df.rename(columns={col: f"Column_{i+1}"}, inplace=True)
+                
         # Drop any completely empty rows/columns
         self.df = self.df.dropna(how='all')
         self.df = self.df.dropna(axis=1, how='all')
         
+        # Log the loaded data information
         print(f"Excel file loaded successfully with {len(self.df)} rows and {len(self.df.columns)} columns.")
         print(f"Columns: {', '.join([str(col) for col in self.df.columns])}")
+        
+        # Print a preview to verify column detection worked
+        print("\nFirst few rows:")
+        print(self.df.head(2).to_string())
+        
     except Exception as e:
         print(f"Error loading Excel file: {e}")
         raise
