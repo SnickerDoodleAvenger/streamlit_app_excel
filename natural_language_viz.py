@@ -2,8 +2,178 @@ import json
 import requests
 import os
 import pandas as pd
+import numpy as np
 import streamlit as st
 from data_visualizer import DataVisualizer
+
+# Add this right after your imports
+# Custom JSON encoder to handle NumPy arrays and other special types
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+            np.int16, np.int32, np.int64, np.uint8,
+            np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+        if isinstance(obj, (np.float_, np.float16, np.float32, 
+            np.float64)):
+            return float(obj)
+        if isinstance(obj, (np.complex_, np.complex64, np.complex128)):
+            return {'real': obj.real, 'imag': obj.imag}
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.datetime64):
+            return str(obj)
+        return json.JSONEncoder.default(self, obj)
+
+def generate_viz_response(question, api_key, visualization_data=None, insights=None, data_df=None, fig=None):
+    """
+    Generate a response about visualization and insights
+    
+    Args:
+        question (str): The user's question about the visualization
+        api_key (str): OpenAI API key
+        visualization_data (dict): Data about the visualization (type, parameters)
+        insights (str): Text insights about the visualization
+        data_df (DataFrame): The data used in the visualization
+        fig (plotly.graph_objects.Figure): The Plotly figure object
+        
+    Returns:
+        str: AI-generated response about the visualization
+    """
+    try:
+        # Create a context with visualization information
+        viz_context = ""
+        if visualization_data:
+            viz_context += f"Visualization Type: {visualization_data.get('viz_type', 'unknown')}\n"
+            viz_context += "Visualization Parameters:\n"
+            for key, value in visualization_data.get('parameters', {}).items():
+                viz_context += f"- {key}: {value}\n"
+        
+        # Add insights if available
+        insights_context = ""
+        if insights:
+            insights_context = f"\nVisualization Insights:\n{insights}\n"
+        
+        # Add data summary if available
+        data_context = ""
+        if data_df is not None:
+            # Get basic data stats
+            data_context = f"\nData Summary:\n"
+            data_context += f"- Shape: {data_df.shape[0]} rows, {data_df.shape[1]} columns\n"
+            
+            # Add column info
+            data_context += "- Columns:\n"
+            for col in data_df.columns:
+                if pd.api.types.is_numeric_dtype(data_df[col]):
+                    data_context += f"  - {col} (numeric): min={data_df[col].min()}, max={data_df[col].max()}, mean={data_df[col].mean():.2f}\n"
+                else:
+                    data_context += f"  - {col} (categorical): {data_df[col].nunique()} unique values\n"
+            
+            # Add a small sample
+            data_context += "\nData Sample (top 3 rows):\n"
+            data_context += data_df.head(3).to_string()
+        
+        # Combine all context information
+        full_context = viz_context + insights_context + data_context
+        
+        # Additional context for specific visualization types
+        if visualization_data and "viz_type" in visualization_data:
+            viz_type = visualization_data.get("viz_type")
+            
+            if viz_type == "violin_plot":
+                full_context += """
+                
+                ABOUT VIOLIN PLOTS:
+                Violin plots show the distribution of data across different categories:
+                - The width at each point shows the density of data points at that value
+                - Wider sections indicate more data points at that value
+                - The box plot inside shows median, quartiles, and range
+                - The kernel density estimation (KDE) is the outer shape showing the probability distribution
+                """
+            elif viz_type == "box_plot":
+                full_context += """
+                
+                ABOUT BOX PLOTS:
+                Box plots show the statistical distribution of values:
+                - The box shows the interquartile range (IQR) - middle 50% of data
+                - The line in the middle of the box is the median
+                - The whiskers typically extend to 1.5 * IQR
+                - Points beyond the whiskers are outliers
+                """
+            elif viz_type == "heatmap":
+                full_context += """
+                
+                ABOUT HEATMAPS:
+                Heatmaps show relationships between two categorical variables:
+                - Each cell's color represents the value at that intersection
+                - Darker/more intense colors typically represent higher values
+                - The color scale shows the range of values
+                - Patterns and clusters indicate relationships between variables
+                """
+        
+        # Prepare the prompt
+        prompt = f"""
+You are an expert data visualization assistant. I need you to answer questions about a visualization and its insights.
+
+CONTEXT:
+{full_context}
+
+USER QUESTION:
+{question}
+
+Please provide a helpful, accurate, and concise response based on the information provided. 
+The user is looking at a data visualization right now, so make your explanation specific to what they can see.
+"""
+        
+        # Create conversation history from session state if available
+        conversation_history = []
+        if 'viz_chat_history' in st.session_state and len(st.session_state.viz_chat_history) > 0:
+            for msg in st.session_state.viz_chat_history[-6:]:  # Last 3 exchanges (up to 6 messages)
+                conversation_history.append({"role": msg["role"], "content": msg["content"]})
+                
+        # Call OpenAI API
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        payload = {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {"role": "system", "content": "You are a data visualization expert that helps users understand visualizations and data insights."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 500
+        }
+        
+        # Add conversation history if it exists
+        if conversation_history:
+            # Insert history before the final prompt
+            payload["messages"] = [payload["messages"][0]] + conversation_history + [payload["messages"][1]]
+        
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions", 
+            headers=headers, 
+            json=payload
+        )
+        response.raise_for_status()
+        response_data = response.json()
+        
+        # Track token usage if session state has token tracker
+        if hasattr(st.session_state, 'token_tracker'):
+            st.session_state.token_tracker.track_api_call(
+                prompt=prompt,
+                response=response_data,
+                model="gpt-3.5-turbo"
+            )
+        
+        return response_data["choices"][0]["message"]["content"]
+        
+    except Exception as e:
+        return f"I'm sorry, I encountered an error while generating a response: {str(e)}"
 
 def create_visualization_from_text(text_prompt, data_df, api_key):
     """
