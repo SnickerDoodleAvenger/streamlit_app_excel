@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import streamlit as st
 from data_visualizer import DataVisualizer
+from viz_chat_interface import add_viz_chat_interface
 
 
 def create_visualization_from_text(text_prompt, data_df, api_key):
@@ -271,6 +272,9 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
                     # Generate visualization parameters from the text description
                     viz_params = create_visualization_from_text(viz_prompt, data_for_viz, api_key)
 
+                    # Store the visualization data in session state for the chat interface
+                    session_state.current_viz_data = viz_params
+
                     # Display the interpretation
                     st.subheader("Visualization Interpretation")
                     st.write(viz_params.get("description", "Creating visualization based on your description"))
@@ -311,6 +315,9 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
                             data_for_viz,
                             api_key
                         )
+                        
+                        # Store insights in session state for the chat interface
+                        session_state.current_viz_insights = insights
     
                         # Display insights
                         st.subheader("Visualization Insights")
@@ -324,7 +331,28 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
                             mime="text/markdown",
                             key="download_nl_viz_insights"
                         )
+                        
+                    # Add chat interface for asking questions about the visualization
+                    st.divider()
+                    add_viz_chat_interface(
+                        api_key=api_key,
+                        visualization_data=viz_params,
+                        insights=insights,
+                        data_df=data_for_viz
+                    )
 
             except Exception as e:
                 st.error(f"Error creating visualization: {str(e)}")
                 st.write("Please try a different description or be more specific about what you'd like to visualize.")
+                
+        # If we have a visualization from a previous run but aren't generating a new one
+        elif 'current_viz_data' in session_state and 'current_viz_insights' in session_state and api_key:
+            # Show the chat interface with the existing visualization data
+            st.divider()
+            st.subheader("Ask Questions About Previous Visualization")
+            add_viz_chat_interface(
+                api_key=api_key,
+                visualization_data=session_state.current_viz_data,
+                insights=session_state.current_viz_insights,
+                data_df=data_for_viz
+            )
