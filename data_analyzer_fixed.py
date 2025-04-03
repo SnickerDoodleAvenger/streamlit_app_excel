@@ -299,7 +299,7 @@ Provide a comprehensive narrative that includes:
                  "content": "You are a data analyst providing clear, insightful analysis of Excel data."},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.3,
+            "temperature": 0.7,
             "max_tokens": 1000
         }
 
