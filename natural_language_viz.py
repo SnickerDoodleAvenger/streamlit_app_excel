@@ -255,6 +255,7 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
         - "Compare sales between product categories and channels"
         - "Show the relationship between marketing expense and revenue"
         - "Create a pie chart showing distribution of revenue by product category"
+        - "Create a violin plot of revenue by product category to see the distribution"
         """)
 
         viz_prompt = st.text_area("Your visualization request:",
@@ -288,6 +289,9 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
 
                     # Create the visualization
                     fig = session_state.visualizer.create_visualization(**params)
+                    
+                    # Store the figure in session state
+                    session_state.current_fig = fig
 
                     # Display the visualization
                     st.subheader("Visualization Result")
@@ -338,7 +342,8 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
                         api_key=api_key,
                         visualization_data=viz_params,
                         insights=insights,
-                        data_df=data_for_viz
+                        data_df=data_for_viz,
+                        fig=fig  # Pass the plotly figure object
                     )
 
             except Exception as e:
@@ -350,9 +355,14 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
             # Show the chat interface with the existing visualization data
             st.divider()
             st.subheader("Ask Questions About Previous Visualization")
+            
+            # Get the stored figure if available
+            fig = session_state.get('current_fig', None)
+            
             add_viz_chat_interface(
                 api_key=api_key,
                 visualization_data=session_state.current_viz_data,
                 insights=session_state.current_viz_insights,
-                data_df=data_for_viz
+                data_df=data_for_viz,
+                fig=fig  # Pass the stored figure
             )
