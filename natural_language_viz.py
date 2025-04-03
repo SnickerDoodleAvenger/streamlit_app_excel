@@ -224,7 +224,8 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
 
     # Create a new tab for NL visualizations
     with app_tabs["NL Visualizations"]:
-        st.write("Create visualizations by describing what you want in natural language.")
+        st.title("Natural Language Visualization")
+        st.write("Create visualizations by describing what you want and chat with the AI about insights.")
 
         # Initialize DataVisualizer if needed
         if 'visualizer' not in session_state or session_state.visualizer is None:
@@ -250,130 +251,128 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             api_key = st.text_input("OpenAI API Key:", type="password",
-                                     help="Enter your OpenAI API key to enable natural language visualization")
+                                    help="Enter your OpenAI API key to enable natural language visualization")
 
-        # Create and store the visualization section
-        if 'display_viz_section' not in session_state:
-            session_state.display_viz_section = True
-
-        # Setup input section - always at the top
-        st.subheader("Describe the Visualization You Want")
-        st.markdown("""
-        Examples:
-        - "Show me revenue by region as a bar chart"
-        - "Create a line chart of revenue over time"
-        - "Compare sales between product categories and channels"
-        - "Create a violin plot of revenue by product category to see the distribution"
-        """)
-
-        viz_prompt = st.text_area("Your visualization request:",
-                                  placeholder="Example: Show me the total revenue by product category as a bar chart",
-                                  height=80)
-
-        generate_button = st.button("Generate Visualization", key="nl_viz_generate_button")
-
-        # Create two columns for visualization and chat
-        if generate_button and viz_prompt and api_key:
-            try:
-                with st.spinner("Creating your visualization..."):
-                    # Generate visualization parameters from the text description
-                    viz_params = create_visualization_from_text(viz_prompt, data_for_viz, api_key)
-
-                    # Store the visualization data in session state for the chat interface
-                    session_state.current_viz_data = viz_params
-
-                    # Display the interpretation
-                    st.subheader("Visualization Interpretation")
-                    st.write(viz_params.get("description", "Creating visualization based on your description"))
-
-                    # Get the parameters for the visualization
-                    viz_type = viz_params.get("viz_type")
-                    params = viz_params.get("parameters", {})
-
-                    # Add viz_type to the parameters
-                    params["viz_type"] = viz_type
-
-                    # Create the visualization
-                    fig = session_state.visualizer.create_visualization(**params)
-                    
-                    # Store the figure in session state
-                    session_state.current_fig = fig
-
-                    # Display the visualization
-                    st.subheader("Visualization Result")
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # Download options
-                    st.download_button(
-                        label="Download Visualization as HTML",
-                        data=fig.to_html(),
-                        file_name=f"{viz_type}_visualization.html",
-                        mime="text/html",
-                        key="download_nl_viz_html"
-                    )
-
-                    # Show used parameters for advanced users
-                    with st.expander("View Visualization Parameters"):
-                        st.json(params)
-
-                    # Generate insights about the visualization
-                    with st.spinner("Generating insights..."):
-                        insights = session_state.visualizer.generate_visualization_insights(
-                            fig, 
-                            viz_type, 
-                            params, 
-                            data_for_viz,
-                            api_key
-                        )
-                        
-                        # Store insights in session state for the chat interface
-                        session_state.current_viz_insights = insights
-    
-                        # Display insights
-                        st.subheader("Visualization Insights")
-                        st.markdown(insights)
-    
-                        # Download insights
-                        st.download_button(
-                            label="Download Insights",
-                            data=insights,
-                            file_name=f"{viz_type}_insights.md",
-                            mime="text/markdown",
-                            key="download_nl_viz_insights"
-                        )
-                        
-                    # Mark that we have a visualization to display
-                    session_state.display_viz_section = True
-
-            except Exception as e:
-                st.error(f"Error creating visualization: {str(e)}")
-                st.write("Please try a different description or be more specific about what you'd like to visualize.")
+        # Create tabs for visualization creation and chat
+        viz_tab, chat_tab = st.tabs(["Create Visualization", "Ask Questions"])
         
-        # Show existing visualization if available
-        elif 'current_fig' in session_state and session_state.display_viz_section:
-            # Create a two-column layout for visualization and chat
-            viz_col, chat_col = st.columns([0.6, 0.4])
-            
-            with viz_col:
+        # Visualization creation tab
+        with viz_tab:
+            st.subheader("Describe the Visualization You Want")
+            st.markdown("""
+            Examples:
+            - "Show me revenue by region as a bar chart"
+            - "Create a line chart of revenue over time"
+            - "Compare sales between product categories and channels"
+            - "Create a violin plot of revenue by product category to see the distribution"
+            """)
+
+            viz_prompt = st.text_area("Your visualization request:",
+                                    placeholder="Example: Show me the total revenue by product category as a bar chart",
+                                    height=80)
+
+            if st.button("Generate Visualization", key="nl_viz_generate_button") and viz_prompt and api_key:
+                try:
+                    with st.spinner("Creating your visualization..."):
+                        # Generate visualization parameters from the text description
+                        viz_params = create_visualization_from_text(viz_prompt, data_for_viz, api_key)
+
+                        # Store the visualization data in session state for the chat interface
+                        session_state.current_viz_data = viz_params
+
+                        # Display the interpretation
+                        st.subheader("Visualization Interpretation")
+                        st.write(viz_params.get("description", "Creating visualization based on your description"))
+
+                        # Get the parameters for the visualization
+                        viz_type = viz_params.get("viz_type")
+                        params = viz_params.get("parameters", {})
+
+                        # Add viz_type to the parameters
+                        params["viz_type"] = viz_type
+
+                        # Create the visualization
+                        fig = session_state.visualizer.create_visualization(**params)
+                        
+                        # Store the figure in session state for the chat interface
+                        session_state.current_fig = fig
+
+                        # Display the visualization
+                        st.subheader("Visualization Result")
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        # Download options
+                        st.download_button(
+                            label="Download Visualization as HTML",
+                            data=fig.to_html(),
+                            file_name=f"{viz_type}_visualization.html",
+                            mime="text/html",
+                            key="download_nl_viz_html"
+                        )
+
+                        # Show used parameters for advanced users
+                        with st.expander("View Visualization Parameters"):
+                            st.json(params)
+
+                        # Generate insights about the visualization
+                        with st.spinner("Generating insights..."):
+                            insights = session_state.visualizer.generate_visualization_insights(
+                                fig, 
+                                viz_type, 
+                                params, 
+                                data_for_viz,
+                                api_key
+                            )
+                            
+                            # Store insights in session state for the chat interface
+                            session_state.current_viz_insights = insights
+        
+                            # Display insights
+                            st.subheader("Visualization Insights")
+                            st.markdown(insights)
+        
+                            # Download insights
+                            st.download_button(
+                                label="Download Insights",
+                                data=insights,
+                                file_name=f"{viz_type}_insights.md",
+                                mime="text/markdown",
+                                key="download_nl_viz_insights"
+                            )
+                            
+                            # Alert user to go to the Ask Questions tab
+                            st.success("Visualization generated! Click on the 'Ask Questions' tab to chat about this visualization.")
+
+                except Exception as e:
+                    st.error(f"Error creating visualization: {str(e)}")
+                    st.write("Please try a different description or be more specific about what you'd like to visualize.")
+                    
+            # Display existing visualization if available but not generating a new one
+            elif 'current_fig' in session_state and not viz_prompt:
                 st.subheader("Current Visualization")
                 st.plotly_chart(session_state.current_fig, use_container_width=True)
                 
                 if 'current_viz_insights' in session_state:
                     st.subheader("Visualization Insights")
                     st.markdown(session_state.current_viz_insights)
+
+        # Chat tab for asking questions
+        with chat_tab:
+            st.subheader("Chat About Your Visualization")
             
-            with chat_col:
-                if 'current_viz_data' in session_state and 'current_viz_insights' in session_state and api_key:
-                    st.subheader("Ask Questions About Visualization")
-                    
-                    # Get the stored figure if available
-                    fig = session_state.get('current_fig', None)
-                    
-                    # Add chat interface in a dedicated column
-                    add_viz_chat_interface(
-                        api_key=api_key,
-                        visualization_data=session_state.current_viz_data,
-                        insights=session_state.current_viz_insights,
-                        data_df=data_for_viz,
-                        fig=fig  # Pass the stored figure
-                    )
+            if 'current_viz_data' in session_state and 'current_viz_insights' in session_state and api_key:
+                # If we have a current visualization to display alongside chat
+                if 'current_fig' in session_state:
+                    # Show a small version of the current visualization at the top
+                    st.plotly_chart(session_state.current_fig, use_container_width=True, height=300)
+                
+                # Add chat interface for questions
+                add_viz_chat_interface(
+                    api_key=api_key,
+                    visualization_data=session_state.current_viz_data,
+                    insights=session_state.current_viz_insights,
+                    data_df=data_for_viz,
+                    fig=session_state.get('current_fig', None)
+                )
+            else:
+                st.info("Please generate a visualization first in the 'Create Visualization' tab.")
