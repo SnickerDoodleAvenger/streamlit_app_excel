@@ -103,7 +103,7 @@ This project is licensed under the MIT License - see the `LICENSE.md` file for d
 
 ## 🙏 Acknowledgments
 - OpenAI for GPT models
-- Streamlit for the amazing web app framework
+- Streamlit for the web app framework
 - Pandas and Plotly for data manipulation and visualization
 
 ## 📞 Support
