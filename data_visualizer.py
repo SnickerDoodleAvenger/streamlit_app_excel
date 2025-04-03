@@ -519,40 +519,40 @@ class DataVisualizer:
 
         return suggestions
 
-def generate_visualization_insights(self, fig, viz_type, params, data_df, api_key=None):
-    """
-    Generate insights and explanations for a visualization.
-    
-    Args:
-        fig: The plotly figure object
-        viz_type: The type of visualization
-        params: The parameters used to create the visualization
-        data_df: The DataFrame containing the data
-        api_key: OpenAI API key (optional)
-    
-    Returns:
-        str: Insights and explanation text
-    """
-    # If no API key, provide basic explanation
-    if not api_key:
-        return self._generate_basic_insights(viz_type, params, data_df)
-    
-    # Otherwise use OpenAI to generate more sophisticated insights
-    import requests
-    import json
-    import os
-    
-    # Create a summary of the visualization
-    viz_summary = f"Visualization type: {viz_type}\n"
-    for key, value in params.items():
-        if key != "viz_type" and key != "title":
-            viz_summary += f"{key}: {value}\n"
-    
-    # Extract relevant data for the visualization
-    relevant_data = self._extract_relevant_data_for_insights(viz_type, params, data_df)
-    
-    # Prepare the prompt
-    prompt = f"""
+    def generate_visualization_insights(self, fig, viz_type, params, data_df, api_key=None):
+        """
+        Generate insights and explanations for a visualization.
+        
+        Args:
+            fig: The plotly figure object
+            viz_type: The type of visualization
+            params: The parameters used to create the visualization
+            data_df: The DataFrame containing the data
+            api_key: OpenAI API key (optional)
+        
+        Returns:
+            str: Insights and explanation text
+        """
+        # If no API key, provide basic explanation
+        if not api_key:
+            return self._generate_basic_insights(viz_type, params, data_df)
+        
+        # Otherwise use OpenAI to generate more sophisticated insights
+        import requests
+        import json
+        import os
+        
+        # Create a summary of the visualization
+        viz_summary = f"Visualization type: {viz_type}\n"
+        for key, value in params.items():
+            if key != "viz_type" and key != "title":
+                viz_summary += f"{key}: {value}\n"
+        
+        # Extract relevant data for the visualization
+        relevant_data = self._extract_relevant_data_for_insights(viz_type, params, data_df)
+        
+        # Prepare the prompt
+        prompt = f"""
 You are an expert data analyst. Analyze this visualization and provide insights about what it shows.
 
 VISUALIZATION DETAILS:
@@ -570,190 +570,190 @@ Please provide:
 Keep your response concise but informative (around 200-300 words).
 """
 
-    # Call OpenAI API
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
-    payload = {
-        "model": "gpt-3.5-turbo",
-        "messages": [
-            {"role": "system", "content": "You are a data visualization expert that identifies insights and patterns."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.3,
-        "max_tokens": 500
-    }
-    
-    try:
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions", 
-            headers=headers, 
-            json=payload
-        )
-        response.raise_for_status()
-        response_data = response.json()
+        # Call OpenAI API
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        payload = {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {"role": "system", "content": "You are a data visualization expert that identifies insights and patterns."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.3,
+            "max_tokens": 500
+        }
         
-        # Track token usage if session state has token tracker
-        import streamlit as st
-        if hasattr(st.session_state, 'token_tracker'):
-            st.session_state.token_tracker.track_api_call(
-                prompt=prompt,
-                response=response_data,
-                model="gpt-3.5-turbo"
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions", 
+                headers=headers, 
+                json=payload
             )
+            response.raise_for_status()
+            response_data = response.json()
+            
+            # Track token usage if session state has token tracker
+            import streamlit as st
+            if hasattr(st.session_state, 'token_tracker'):
+                st.session_state.token_tracker.track_api_call(
+                    prompt=prompt,
+                    response=response_data,
+                    model="gpt-3.5-turbo"
+                )
+            
+            return response_data["choices"][0]["message"]["content"]
         
-        return response_data["choices"][0]["message"]["content"]
-    
-    except Exception as e:
-        print(f"Error generating insights: {e}")
-        # Fall back to basic insights if API call fails
-        return self._generate_basic_insights(viz_type, params, data_df)
+        except Exception as e:
+            print(f"Error generating insights: {e}")
+            # Fall back to basic insights if API call fails
+            return self._generate_basic_insights(viz_type, params, data_df)
 
-def _extract_relevant_data_for_insights(self, viz_type, params, data_df):
-    """Extract relevant data for generating insights based on visualization type."""
-    summary = ""
-    
-    try:
+    def _extract_relevant_data_for_insights(self, viz_type, params, data_df):
+        """Extract relevant data for generating insights based on visualization type."""
+        summary = ""
+        
+        try:
+            if viz_type == "bar_chart":
+                x_col = params.get("x_column")
+                y_col = params.get("y_column")
+                
+                if x_col and y_col and x_col in data_df.columns and y_col in data_df.columns:
+                    # Get aggregated data
+                    agg_data = data_df.groupby(x_col)[y_col].sum().reset_index()
+                    summary += f"Aggregated {y_col} by {x_col}:\n"
+                    summary += agg_data.to_string(index=False) + "\n\n"
+                    
+                    # Add basic stats
+                    total = agg_data[y_col].sum()
+                    avg = agg_data[y_col].mean()
+                    max_val = agg_data[y_col].max()
+                    max_category = agg_data.loc[agg_data[y_col].idxmax(), x_col]
+                    min_val = agg_data[y_col].min()
+                    min_category = agg_data.loc[agg_data[y_col].idxmin(), x_col]
+                    
+                    summary += f"Total {y_col}: {total}\n"
+                    summary += f"Average {y_col} per {x_col}: {avg:.2f}\n"
+                    summary += f"Highest {y_col}: {max_val} ({max_category})\n"
+                    summary += f"Lowest {y_col}: {min_val} ({min_category})\n"
+                    
+            elif viz_type == "pie_chart":
+                names_col = params.get("names_column")
+                values_col = params.get("values_column")
+                
+                if names_col and values_col and names_col in data_df.columns and values_col in data_df.columns:
+                    # Get aggregated data
+                    agg_data = data_df.groupby(names_col)[values_col].sum().reset_index()
+                    summary += f"Distribution of {values_col} by {names_col}:\n"
+                    summary += agg_data.to_string(index=False) + "\n\n"
+                    
+                    # Calculate percentages
+                    total = agg_data[values_col].sum()
+                    agg_data['percentage'] = (agg_data[values_col] / total * 100).round(2)
+                    summary += "Percentage breakdown:\n"
+                    for _, row in agg_data.iterrows():
+                        summary += f"{row[names_col]}: {row['percentage']}%\n"
+            
+            elif viz_type == "scatter_plot" or viz_type == "bubble_chart":
+                x_col = params.get("x_column")
+                y_col = params.get("y_column")
+                
+                if x_col and y_col and x_col in data_df.columns and y_col in data_df.columns:
+                    # Add correlation information
+                    correlation = data_df[x_col].corr(data_df[y_col])
+                    summary += f"Correlation between {x_col} and {y_col}: {correlation:.4f}\n\n"
+                    
+                    # Add basic stats for both axes
+                    summary += f"{x_col} stats: min={data_df[x_col].min()}, max={data_df[x_col].max()}, avg={data_df[x_col].mean():.2f}\n"
+                    summary += f"{y_col} stats: min={data_df[y_col].min()}, max={data_df[y_col].max()}, avg={data_df[y_col].mean():.2f}\n"
+            
+            elif viz_type == "heatmap":
+                x_col = params.get("x_column")
+                y_col = params.get("y_column")
+                z_col = params.get("z_column")
+                
+                if x_col and y_col and z_col and all(col in data_df.columns for col in [x_col, y_col, z_col]):
+                    # Create pivot table summary
+                    pivot_data = data_df.pivot_table(values=z_col, index=y_col, columns=x_col, aggfunc='mean')
+                    summary += "Heatmap data (mean values):\n"
+                    summary += pivot_data.to_string() + "\n\n"
+                    
+                    # Find highest and lowest combinations
+                    max_val = data_df.groupby([x_col, y_col])[z_col].mean().max()
+                    min_val = data_df.groupby([x_col, y_col])[z_col].mean().min()
+                    summary += f"Highest value: {max_val:.2f}\n"
+                    summary += f"Lowest value: {min_val:.2f}\n"
+            
+            else:
+                # For other visualizations, provide a general data summary
+                summary += f"Data shape: {data_df.shape[0]} rows, {data_df.shape[1]} columns\n"
+                numeric_cols = data_df.select_dtypes(include=['number']).columns
+                summary += f"Numeric columns: {', '.join(numeric_cols)}\n"
+                
+                # Add parameters used for the visualization
+                summary += "Visualization parameters:\n"
+                for key, value in params.items():
+                    if key != "viz_type" and key != "title" and key in data_df.columns:
+                        summary += f"{key}: column with {data_df[key].nunique()} unique values\n"
+        
+        except Exception as e:
+            summary += f"Error extracting relevant data: {e}\n"
+            # Provide a basic summary instead
+            summary += f"Data dimensions: {data_df.shape[0]} rows, {data_df.shape[1]} columns\n"
+        
+        return summary
+
+    def _generate_basic_insights(self, viz_type, params, data_df):
+        """Generate basic insights without using API."""
+        insights = f"## {params.get('title', 'Visualization')} Analysis\n\n"
+        
         if viz_type == "bar_chart":
             x_col = params.get("x_column")
             y_col = params.get("y_column")
-            
-            if x_col and y_col and x_col in data_df.columns and y_col in data_df.columns:
-                # Get aggregated data
-                agg_data = data_df.groupby(x_col)[y_col].sum().reset_index()
-                summary += f"Aggregated {y_col} by {x_col}:\n"
-                summary += agg_data.to_string(index=False) + "\n\n"
-                
-                # Add basic stats
-                total = agg_data[y_col].sum()
-                avg = agg_data[y_col].mean()
-                max_val = agg_data[y_col].max()
-                max_category = agg_data.loc[agg_data[y_col].idxmax(), x_col]
-                min_val = agg_data[y_col].min()
-                min_category = agg_data.loc[agg_data[y_col].idxmin(), x_col]
-                
-                summary += f"Total {y_col}: {total}\n"
-                summary += f"Average {y_col} per {x_col}: {avg:.2f}\n"
-                summary += f"Highest {y_col}: {max_val} ({max_category})\n"
-                summary += f"Lowest {y_col}: {min_val} ({min_category})\n"
-                
+            insights += f"This bar chart shows the relationship between {x_col} (categories) and {y_col} (values).\n\n"
+            insights += "### Key Observations:\n"
+            insights += f"- The chart compares {y_col} across different {x_col} categories\n"
+            insights += "- Look for the tallest bars to identify highest values\n"
+            insights += "- Compare the heights to see relative differences between categories\n"
+            insights += "- Consider what might explain variations across categories\n"
+        
         elif viz_type == "pie_chart":
             names_col = params.get("names_column")
             values_col = params.get("values_column")
-            
-            if names_col and values_col and names_col in data_df.columns and values_col in data_df.columns:
-                # Get aggregated data
-                agg_data = data_df.groupby(names_col)[values_col].sum().reset_index()
-                summary += f"Distribution of {values_col} by {names_col}:\n"
-                summary += agg_data.to_string(index=False) + "\n\n"
-                
-                # Calculate percentages
-                total = agg_data[values_col].sum()
-                agg_data['percentage'] = (agg_data[values_col] / total * 100).round(2)
-                summary += "Percentage breakdown:\n"
-                for _, row in agg_data.iterrows():
-                    summary += f"{row[names_col]}: {row['percentage']}%\n"
+            insights += f"This pie chart shows the distribution of {values_col} across different {names_col} categories.\n\n"
+            insights += "### Key Observations:\n"
+            insights += "- Larger slices represent categories with higher values\n"
+            insights += "- The chart shows the proportional contribution of each category to the total\n"
+            insights += "- Look for dominant categories that take up significant portions of the pie\n"
+            insights += "- Consider the balance or imbalance in the distribution\n"
         
-        elif viz_type == "scatter_plot" or viz_type == "bubble_chart":
+        elif viz_type == "scatter_plot":
             x_col = params.get("x_column")
             y_col = params.get("y_column")
-            
-            if x_col and y_col and x_col in data_df.columns and y_col in data_df.columns:
-                # Add correlation information
-                correlation = data_df[x_col].corr(data_df[y_col])
-                summary += f"Correlation between {x_col} and {y_col}: {correlation:.4f}\n\n"
-                
-                # Add basic stats for both axes
-                summary += f"{x_col} stats: min={data_df[x_col].min()}, max={data_df[x_col].max()}, avg={data_df[x_col].mean():.2f}\n"
-                summary += f"{y_col} stats: min={data_df[y_col].min()}, max={data_df[y_col].max()}, avg={data_df[y_col].mean():.2f}\n"
+            insights += f"This scatter plot shows the relationship between {x_col} and {y_col}.\n\n"
+            insights += "### Key Observations:\n"
+            insights += "- Each point represents an individual data point\n"
+            insights += "- Look for patterns like linear trends or clusters\n"
+            insights += "- Points clustered together suggest a relationship between variables\n"
+            insights += "- Outliers may represent unusual cases worth investigating\n"
         
-        elif viz_type == "heatmap":
+        elif viz_type == "line_chart":
             x_col = params.get("x_column")
             y_col = params.get("y_column")
-            z_col = params.get("z_column")
-            
-            if x_col and y_col and z_col and all(col in data_df.columns for col in [x_col, y_col, z_col]):
-                # Create pivot table summary
-                pivot_data = data_df.pivot_table(values=z_col, index=y_col, columns=x_col, aggfunc='mean')
-                summary += "Heatmap data (mean values):\n"
-                summary += pivot_data.to_string() + "\n\n"
-                
-                # Find highest and lowest combinations
-                max_val = data_df.groupby([x_col, y_col])[z_col].mean().max()
-                min_val = data_df.groupby([x_col, y_col])[z_col].mean().min()
-                summary += f"Highest value: {max_val:.2f}\n"
-                summary += f"Lowest value: {min_val:.2f}\n"
+            insights += f"This line chart shows how {y_col} changes in relation to {x_col}.\n\n"
+            insights += "### Key Observations:\n"
+            insights += "- The line shows trends over the sequence of values\n"
+            insights += "- Upward slopes indicate increases, downward slopes indicate decreases\n"
+            insights += "- Look for patterns like seasonality, cycles, or consistent trends\n"
+            insights += "- Sudden changes in direction may indicate important events or changes\n"
         
         else:
-            # For other visualizations, provide a general data summary
-            summary += f"Data shape: {data_df.shape[0]} rows, {data_df.shape[1]} columns\n"
-            numeric_cols = data_df.select_dtypes(include=['number']).columns
-            summary += f"Numeric columns: {', '.join(numeric_cols)}\n"
-            
-            # Add parameters used for the visualization
-            summary += "Visualization parameters:\n"
-            for key, value in params.items():
-                if key != "viz_type" and key != "title" and key in data_df.columns:
-                    summary += f"{key}: column with {data_df[key].nunique()} unique values\n"
-    
-    except Exception as e:
-        summary += f"Error extracting relevant data: {e}\n"
-        # Provide a basic summary instead
-        summary += f"Data dimensions: {data_df.shape[0]} rows, {data_df.shape[1]} columns\n"
-    
-    return summary
-
-def _generate_basic_insights(self, viz_type, params, data_df):
-    """Generate basic insights without using API."""
-    insights = f"## {params.get('title', 'Visualization')} Analysis\n\n"
-    
-    if viz_type == "bar_chart":
-        x_col = params.get("x_column")
-        y_col = params.get("y_column")
-        insights += f"This bar chart shows the relationship between {x_col} (categories) and {y_col} (values).\n\n"
-        insights += "### Key Observations:\n"
-        insights += f"- The chart compares {y_col} across different {x_col} categories\n"
-        insights += "- Look for the tallest bars to identify highest values\n"
-        insights += "- Compare the heights to see relative differences between categories\n"
-        insights += "- Consider what might explain variations across categories\n"
-    
-    elif viz_type == "pie_chart":
-        names_col = params.get("names_column")
-        values_col = params.get("values_column")
-        insights += f"This pie chart shows the distribution of {values_col} across different {names_col} categories.\n\n"
-        insights += "### Key Observations:\n"
-        insights += "- Larger slices represent categories with higher values\n"
-        insights += "- The chart shows the proportional contribution of each category to the total\n"
-        insights += "- Look for dominant categories that take up significant portions of the pie\n"
-        insights += "- Consider the balance or imbalance in the distribution\n"
-    
-    elif viz_type == "scatter_plot":
-        x_col = params.get("x_column")
-        y_col = params.get("y_column")
-        insights += f"This scatter plot shows the relationship between {x_col} and {y_col}.\n\n"
-        insights += "### Key Observations:\n"
-        insights += "- Each point represents an individual data point\n"
-        insights += "- Look for patterns like linear trends or clusters\n"
-        insights += "- Points clustered together suggest a relationship between variables\n"
-        insights += "- Outliers may represent unusual cases worth investigating\n"
-    
-    elif viz_type == "line_chart":
-        x_col = params.get("x_column")
-        y_col = params.get("y_column")
-        insights += f"This line chart shows how {y_col} changes in relation to {x_col}.\n\n"
-        insights += "### Key Observations:\n"
-        insights += "- The line shows trends over the sequence of values\n"
-        insights += "- Upward slopes indicate increases, downward slopes indicate decreases\n"
-        insights += "- Look for patterns like seasonality, cycles, or consistent trends\n"
-        insights += "- Sudden changes in direction may indicate important events or changes\n"
-    
-    else:
-        insights += f"This {viz_type} visualization shows relationships within your data.\n\n"
-        insights += "### General Guidance:\n"
-        insights += "- Compare different categories or groups in the data\n"
-        insights += "- Look for patterns, trends, or outliers\n"
-        insights += "- Consider what the visualization reveals about your business questions\n"
-        insights += "- For detailed insights, investigate notable features further\n"
-    
-    return insights
+            insights += f"This {viz_type} visualization shows relationships within your data.\n\n"
+            insights += "### General Guidance:\n"
+            insights += "- Compare different categories or groups in the data\n"
+            insights += "- Look for patterns, trends, or outliers\n"
+            insights += "- Consider what the visualization reveals about your business questions\n"
+            insights += "- For detailed insights, investigate notable features further\n"
+        
+        return insights
