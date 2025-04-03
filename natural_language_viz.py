@@ -4,13 +4,12 @@ import os
 import pandas as pd
 import streamlit as st
 from data_visualizer import DataVisualizer
-from viz_chat_interface import generate_viz_response
-
 
 def create_visualization_from_text(text_prompt, data_df, api_key):
     """
-    Generates visualization parameters based on a natural language description.
-
+    Enhanced version that generates visualization parameters based on natural language.
+    Uses a more robust OpenAI prompt with better error handling and parameter mapping.
+    
     Args:
         text_prompt (str): Natural language description of the desired visualization
         data_df (pd.DataFrame): The dataframe containing the data
@@ -29,62 +28,183 @@ def create_visualization_from_text(text_prompt, data_df, api_key):
         else:
             column_info[str(col)] = "categorical"
 
-    # Prepare the prompt for the OpenAI API
-    column_descriptions = "\n".join([f"- {col}: {type_}" for col, type_ in column_info.items()])
-    unique_values = {col: data_df[col].nunique() for col in data_df.columns
-                     if column_info[str(col)] == "categorical" and data_df[col].nunique() < 15}
-    unique_values_str = "\n".join([f"- {col}: {data_df[col].unique().tolist()}" for col in unique_values])
+    # Get sample data and statistics to help the model understand the data better
+    data_stats = {}
+    for col, col_type in column_info.items():
+        if col_type == "numeric":
+            data_stats[col] = {
+                "min": float(data_df[col].min()),
+                "max": float(data_df[col].max()),
+                "mean": float(data_df[col].mean()),
+                "median": float(data_df[col].median()),
+                "type": "numeric"
+            }
+        elif col_type == "categorical":
+            unique_values = data_df[col].unique().tolist()
+            # Only include full list if there aren't too many values
+            if len(unique_values) <= 15:
+                data_stats[col] = {
+                    "unique_values": unique_values,
+                    "count": len(unique_values),
+                    "type": "categorical"
+                }
+            else:
+                data_stats[col] = {
+                    "unique_values": unique_values[:5] + ["...", unique_values[-1]],
+                    "count": len(unique_values),
+                    "type": "categorical"
+                }
+        elif col_type == "date":
+            data_stats[col] = {
+                "min": str(data_df[col].min()),
+                "max": str(data_df[col].max()),
+                "type": "date"
+            }
 
-    # Map of common chart types for better inference
-    chart_types = {
-        "bar_chart": "Bar chart comparing categories",
-        "line_chart": "Line chart showing trends over values or time",
-        "scatter_plot": "Scatter plot showing relationship between two numeric variables",
-        "pie_chart": "Pie chart showing composition/distribution",
-        "histogram": "Histogram showing distribution of one numeric variable",
-        "box_plot": "Box plot showing statistical distribution by categories",
-        "heatmap": "Heatmap showing relationship between two categorical variables and a numeric value",
-        "time_series": "Time series plot for data over time",
-        "grouped_bar": "Grouped bar chart comparing multiple categories",
-        "stacked_bar": "Stacked bar chart showing composition within categories",
-        "area_chart": "Area chart showing cumulative values",
-        "bubble_chart": "Bubble chart showing relationship with size representing a third variable",
-        "violin_plot": "Violin plot showing distribution density by categories",
-        "sankey_diagram": "Sankey diagram showing flow between two categorical variables"
+    # Detailed descriptions of visualization types and their required parameters
+    visualization_types = {
+        "bar_chart": {
+            "description": "Bar chart comparing values across categories",
+            "required_params": ["x_column", "y_column"],
+            "optional_params": ["color_column", "orientation", "title"],
+            "common_use_cases": "Comparing values across different categories",
+            "example": "Show Revenue by Region as a bar chart"
+        },
+        "line_chart": {
+            "description": "Line chart showing trends over time or ordered categories",
+            "required_params": ["x_column", "y_column"],
+            "optional_params": ["color_column", "title"],
+            "common_use_cases": "Showing trends over time, progression, or sequences",
+            "example": "Display Revenue trends over time as a line chart"
+        },
+        "pie_chart": {
+            "description": "Pie chart showing proportion of total for each category",
+            "required_params": ["names_column", "values_column"],
+            "optional_params": ["title"],
+            "common_use_cases": "Showing composition or proportion of a total",
+            "example": "Show breakdown of Revenue by Region as a pie chart"
+        },
+        "scatter_plot": {
+            "description": "Scatter plot showing relationship between two numeric variables",
+            "required_params": ["x_column", "y_column"],
+            "optional_params": ["color_column", "size_column", "title"],
+            "common_use_cases": "Examining correlation or relationships between numeric variables",
+            "example": "Plot the relationship between Revenue and Profit"
+        },
+        "grouped_bar": {
+            "description": "Grouped bar chart comparing values across categories with sub-groups",
+            "required_params": ["x_column", "y_column", "group_column"],
+            "optional_params": ["title"],
+            "common_use_cases": "Comparing values across categories with an additional grouping dimension",
+            "example": "Compare Revenue by Region, grouped by Product Category"
+        },
+        "stacked_bar": {
+            "description": "Stacked bar chart showing composition within categories",
+            "required_params": ["x_column", "y_column", "stack_column"],
+            "optional_params": ["title"],
+            "common_use_cases": "Showing both total values and composition within categories",
+            "example": "Show Revenue by Region, stacked by Product Category"
+        },
+        "histogram": {
+            "description": "Histogram showing distribution of a numeric variable",
+            "required_params": ["column"],
+            "optional_params": ["bins", "color_column", "title"],
+            "common_use_cases": "Analyzing distribution of numeric data",
+            "example": "Show distribution of Order Values"
+        },
+        "box_plot": {
+            "description": "Box plot showing statistical distribution by categories",
+            "required_params": ["x_column", "y_column"],
+            "optional_params": ["color_column", "title"],
+            "common_use_cases": "Comparing distributions across categories",
+            "example": "Show Profit distribution by Region using box plots"
+        },
+        "heatmap": {
+            "description": "Heatmap showing relationships between two categorical variables and a numeric value",
+            "required_params": ["x_column", "y_column", "z_column"],
+            "optional_params": ["title"],
+            "common_use_cases": "Visualizing matrix data or correlation",
+            "example": "Create a heatmap of Revenue by Region and Product Category"
+        },
+        "time_series": {
+            "description": "Time series chart showing values over time",
+            "required_params": ["date_column", "value_column"],
+            "optional_params": ["color_column", "resolution", "title"],
+            "common_use_cases": "Analyzing trends over time",
+            "example": "Show Revenue over time as a time series"
+        },
+        "area_chart": {
+            "description": "Area chart showing cumulative values",
+            "required_params": ["x_column", "y_column"],
+            "optional_params": ["group_column", "title"],
+            "common_use_cases": "Showing cumulative values or stacked areas",
+            "example": "Display cumulative Revenue by date as an area chart"
+        },
+        "bubble_chart": {
+            "description": "Bubble chart showing relationship between three numeric variables",
+            "required_params": ["x_column", "y_column", "size_column"],
+            "optional_params": ["color_column", "title"],
+            "common_use_cases": "Visualizing relationships between three variables",
+            "example": "Create a bubble chart of Revenue vs Profit with Customer Count as bubble size"
+        },
+        "violin_plot": {
+            "description": "Violin plot showing distribution density by categories",
+            "required_params": ["x_column", "y_column"],
+            "optional_params": ["color_column", "title"],
+            "common_use_cases": "Comparing detailed distributions across categories",
+            "example": "Show Revenue distribution by Region as a violin plot"
+        },
+        "sankey_diagram": {
+            "description": "Sankey diagram showing flow between categories",
+            "required_params": ["source_column", "target_column", "value_column"],
+            "optional_params": ["title"],
+            "common_use_cases": "Visualizing flow or transfer between categories",
+            "example": "Create a Sankey diagram showing Revenue flow from Region to Product Category"
+        }
     }
-    charts_description = "\n".join([f"- {key}: {desc}" for key, desc in chart_types.items()])
-
+    
+    # Create a more comprehensive prompt
     prompt = f"""
-You are an expert data visualization assistant. Based on the user's request, determine the appropriate visualization type and parameters to visualize their data.
+You are an expert data visualization assistant. Based on the user's natural language request, determine the most appropriate visualization type and ALL required parameters to create that visualization.
 
-DATA INFORMATION:
+# DATA INFORMATION
 The DataFrame has these columns with their types:
-{column_descriptions}
+{json.dumps(column_info, indent=2)}
 
-For categorical columns with limited unique values:
-{unique_values_str}
+# DATA SAMPLE AND STATISTICS
+Here are statistics and sample data for the columns:
+{json.dumps(data_stats, indent=2)}
 
-AVAILABLE VISUALIZATION TYPES:
-{charts_description}
+# VISUALIZATION TYPES AND REQUIREMENTS
+Available visualization types with their required and optional parameters:
+{json.dumps(visualization_types, indent=2)}
 
-USER REQUEST:
+# USER'S VISUALIZATION REQUEST
 "{text_prompt}"
 
-For pie charts, use parameters 'names_column' for categories and 'values_column' for values.
-For bar charts, use 'x_column' for categories and 'y_column' for values.
+# INSTRUCTIONS
+1. Analyze the user's request and determine the most appropriate visualization type
+2. Identify which columns should be used for each required parameter
+3. For common analytical phrases, map them to corresponding columns (e.g. "sales" likely refers to "Revenue" column)
+4. Make sure ALL required parameters for the chosen visualization type are included
+5. Add a descriptive title that explains what the visualization shows
+6. Add a brief description explaining why this visualization is appropriate for the request
 
-Return a JSON object with the following structure:
+# RESPONSE FORMAT
+Return ONLY a valid JSON object with the following structure:
+```json
 {{
-    "viz_type": "The chart type (one of the keys above)",
-    "description": "Brief explanation of why this visualization type is appropriate",
+    "viz_type": "visualization_type_from_the_list",
+    "description": "Brief explanation of why this visualization is appropriate",
     "parameters": {{
-        // All parameters needed for this visualization type
-        // Such as x_column, y_column, color_column, etc.
-        // Only include relevant parameters for the selected viz_type
+        // Include ALL required parameters for the selected visualization type
+        // Only include parameters relevant to the chosen visualization type
+        // Use actual column names from the dataset
     }}
 }}
+```
 
-Make sure to only select columns that exist in the dataset and match the required data types for the chosen visualization.
+Be especially careful with the parameters for each visualization type. For GROUPED BAR CHARTS, you MUST include x_column, y_column, AND group_column. For PIE CHARTS, use names_column and values_column parameters.
 """
 
     try:
@@ -94,14 +214,14 @@ Make sure to only select columns that exist in the dataset and match the require
             "Authorization": f"Bearer {api_key}"
         }
         payload = {
-            "model": "gpt-3.5-turbo",
+            "model": "gpt-4o",  # Using more capable model for better parameter mapping
             "messages": [
-                {"role": "system",
-                 "content": "You are a data visualization expert that converts natural language requests into visualization specifications."},
+                {"role": "system", "content": "You are a data visualization expert that precisely converts natural language requests into visualization specifications with all required parameters."},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.3,
-            "max_tokens": 1000
+            "temperature": 0.1,  # Lower temperature for more precise responses
+            "max_tokens": 1000,
+            "response_format": {"type": "json_object"}  # Ensure we get valid JSON
         }
 
         response = requests.post(
@@ -110,8 +230,6 @@ Make sure to only select columns that exist in the dataset and match the require
             json=payload
         )
         response.raise_for_status()
-
-        # Extract the response content
         response_data = response.json()
 
         # Track token usage if session state has token tracker
@@ -119,113 +237,66 @@ Make sure to only select columns that exist in the dataset and match the require
             st.session_state.token_tracker.track_api_call(
                 prompt=prompt,
                 response=response_data,
-                model="gpt-3.5-turbo"
+                model="gpt-4o"
             )
-
-        response_text = response_data["choices"][0]["message"]["content"]
-
-        # Extract the JSON part in the response (in case there's additional text)
-        json_start = response_text.find("{")
-        json_end = response_text.rfind("}") + 1
-        if json_start >= 0 and json_end > json_start:
-            json_str = response_text[json_start:json_end]
-            try:
-                viz_params = json.loads(json_str)
-
-                # Map parameter names to match DataVisualizer's expected parameters
-                if "parameters" in viz_params:
-                    params = viz_params["parameters"]
-
-                    # For pie charts
-                    if viz_params["viz_type"] == "pie_chart":
-                        # Rename common alternatives to the expected parameter names
-                        param_mapping = {
-                            "category_column": "names_column",
-                            "categories": "names_column",
-                            "labels": "names_column",
-                            "value_column": "values_column",
-                            "values": "values_column"
-                        }
-
-                        # Apply the mapping
-                        for old_param, new_param in param_mapping.items():
-                            if old_param in params and new_param not in params:
-                                params[new_param] = params.pop(old_param)
-
-                    # For bar charts
-                    if viz_params["viz_type"] == "bar_chart":
-                        param_mapping = {
-                            "category_column": "x_column",
-                            "categories": "x_column",
-                            "value_column": "y_column",
-                            "values": "y_column"
-                        }
-
-                        for old_param, new_param in param_mapping.items():
-                            if old_param in params and new_param not in params:
-                                params[new_param] = params.pop(old_param)
-
-                return viz_params
-            except json.JSONDecodeError:
-                # Try to clean up common JSON formatting issues
-                # Replace single quotes with double quotes
-                json_str = json_str.replace("'", "\"")
-                # Handle trailing commas
-                json_str = json_str.replace(",\n}", "\n}")
-                json_str = json_str.replace(",}", "}")
-                try:
-                    viz_params = json.loads(json_str)
-
-                    # Apply parameter mapping after parsing
-                    if "parameters" in viz_params:
-                        params = viz_params["parameters"]
-
-                        # For pie charts
-                        if viz_params["viz_type"] == "pie_chart":
-                            param_mapping = {
-                                "category_column": "names_column",
-                                "categories": "names_column",
-                                "labels": "names_column",
-                                "value_column": "values_column",
-                                "values": "values_column"
-                            }
-
-                            for old_param, new_param in param_mapping.items():
-                                if old_param in params and new_param not in params:
-                                    params[new_param] = params.pop(old_param)
-
-                        # For bar charts
-                        if viz_params["viz_type"] == "bar_chart":
-                            param_mapping = {
-                                "category_column": "x_column",
-                                "categories": "x_column",
-                                "value_column": "y_column",
-                                "values": "y_column"
-                            }
-
-                            for old_param, new_param in param_mapping.items():
-                                if old_param in params and new_param not in params:
-                                    params[new_param] = params.pop(old_param)
-
-                    return viz_params
-                except:
-                    raise ValueError("Could not parse the response as JSON")
-        else:
-            raise ValueError("Could not find JSON content in the response")
-
+        
+        # Parse the response content as JSON
+        response_content = response_data["choices"][0]["message"]["content"]
+        viz_params = json.loads(response_content)
+        
+        # Verify all required parameters are present for the chosen visualization type
+        viz_type = viz_params.get("viz_type")
+        if viz_type not in visualization_types:
+            raise ValueError(f"Invalid visualization type: {viz_type}")
+            
+        required_params = visualization_types[viz_type]["required_params"]
+        parameters = viz_params.get("parameters", {})
+        
+        # Check if all required parameters are present
+        missing_params = [param for param in required_params if param not in parameters]
+        if missing_params:
+            # If parameters are missing, try to infer reasonable defaults
+            if viz_type == "grouped_bar" and "group_column" in missing_params:
+                # Look for categorical columns that aren't already used
+                unused_categorical = [col for col, type_ in column_info.items() 
+                                    if type_ == "categorical" and col not in parameters.values()]
+                if unused_categorical and "x_column" in parameters:
+                    # Use the first unused categorical column that isn't already the x_column
+                    x_col = parameters.get("x_column")
+                    available_columns = [col for col in unused_categorical if col != x_col]
+                    if available_columns:
+                        parameters["group_column"] = available_columns[0]
+                        st.info(f"Added missing required parameter 'group_column': {available_columns[0]}")
+                    else:
+                        raise ValueError(f"Cannot infer missing required parameter(s): {missing_params}")
+                else:
+                    raise ValueError(f"Cannot infer missing required parameter(s): {missing_params}")
+            else:
+                raise ValueError(f"Missing required parameter(s) for {viz_type}: {missing_params}")
+                
+        # Return the complete visualization parameters
+        return {
+            "viz_type": viz_type,
+            "description": viz_params.get("description", ""),
+            "parameters": parameters
+        }
+        
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON response from OpenAI: {e}")
+    except requests.exceptions.RequestException as e:
+        raise ValueError(f"Error communicating with OpenAI API: {e}")
     except Exception as e:
-        st.error(f"Error generating visualization parameters: {str(e)}")
-        raise
+        raise ValueError(f"Error generating visualization parameters: {str(e)}")
 
 
 def add_nl_visualization_tab(app_tabs, analyzer, session_state):
-    """Add a natural language visualization tab to the app."""
+    """Add a natural language visualization tab to the app with enhanced processing."""
     from data_visualizer import DataVisualizer
 
     # Create a new tab for NL visualizations
     with app_tabs["NL Visualizations"]:
         st.title("Natural Language Visualization")
-        st.write("Create visualizations by describing what you want and chat with the AI about insights.")
+        st.write("Create visualizations by describing what you want in plain English.")
 
         # Initialize DataVisualizer if needed
         if 'visualizer' not in session_state or session_state.visualizer is None:
@@ -267,11 +338,25 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
             - "Create a line chart of revenue over time"
             - "Compare sales between product categories and channels"
             - "Create a violin plot of revenue by product category to see the distribution"
+            - "Show me a grouped bar chart of revenue by region, grouped by channel"
             """)
 
             viz_prompt = st.text_area("Your visualization request:",
                                     placeholder="Example: Show me the total revenue by product category as a bar chart",
                                     height=80)
+
+            advanced_options = st.expander("Advanced Options")
+            with advanced_options:
+                show_debug_info = st.checkbox("Show debug information", value=False,
+                                           help="Display the raw parameters used to create the visualization")
+                
+                # Allow selecting model for natural language processing
+                nl_model = st.selectbox(
+                    "AI Model for Processing",
+                    ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+                    index=0,
+                    help="Select which model to use for natural language processing"
+                )
 
             if st.button("Generate Visualization", key="nl_viz_generate_button") and viz_prompt and api_key:
                 try:
@@ -285,6 +370,11 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
                         # Get the parameters for the visualization
                         viz_type = viz_params.get("viz_type")
                         params = viz_params.get("parameters", {})
+
+                        # Show debug information if requested
+                        if show_debug_info:
+                            st.subheader("Debug Information")
+                            st.json(viz_params)
 
                         # Add viz_type to the parameters
                         params["viz_type"] = viz_type
@@ -319,6 +409,20 @@ def add_nl_visualization_tab(app_tabs, analyzer, session_state):
                 except Exception as e:
                     st.error(f"Error creating visualization: {str(e)}")
                     st.write("Please try a different description or be more specific about what you'd like to visualize.")
+                    
+                    # Suggest improvements to the prompt
+                    if "missing required" in str(e).lower():
+                        missing_param = str(e).split(":")[-1].strip()
+                        viz_type = str(e).split("for")[1].split(":")[0].strip()
+                        st.info(f"Try being more specific about the {missing_param} for your {viz_type}.")
+                        
+                        # Provide examples based on the visualization type
+                        if "grouped_bar" in viz_type.lower():
+                            st.markdown("""
+                            **Examples for grouped bar charts:**
+                            - "Show a grouped bar chart of Revenue by Product_Category, grouped by Channel"
+                            - "Create a grouped bar chart comparing Revenue across Regions, grouped by Product_Category"
+                            """)
         
         # Second container: Always display visualization if available
         with viz_display:
