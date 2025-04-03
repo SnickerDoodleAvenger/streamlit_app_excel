@@ -321,95 +321,95 @@ Provide a comprehensive narrative that includes:
             print(f"Error calling OpenAI API: {e}")
             raise
 
-def answer_question(self, question):
-    """
-    Enhanced method to answer questions about the data, including breakdown requests.
+    def answer_question(self, question):
+        """
+        Enhanced method to answer questions about the data, including breakdown requests.
 
-    Args:
-        question (str): The user's question about the data
+        Args:
+            question (str): The user's question about the data
 
-    Returns:
-        str: The answer to the question
-    """
-    # Mapping of common metrics to DataFrame columns
-    METRIC_MAP = {
-        'revenue': 'Revenue', 
-        'sales': 'Revenue', 
-        'profit': 'Net_Profit',
-        'gross profit': 'Gross_Profit',
-        'expenses': 'Total_Expenses',
-        'marketing expense': 'Marketing_Expense',
-        'customer count': 'Customer_Count',
-        'transaction count': 'Transaction_Count',
-        'average order value': 'Average_Order_Value',
-        'return rate': 'Return_Rate'
-    }
+        Returns:
+            str: The answer to the question
+        """
+        # Mapping of common metrics to DataFrame columns
+        METRIC_MAP = {
+            'revenue': 'Revenue', 
+            'sales': 'Revenue', 
+            'profit': 'Net_Profit',
+            'gross profit': 'Gross_Profit',
+            'expenses': 'Total_Expenses',
+            'marketing expense': 'Marketing_Expense',
+            'customer count': 'Customer_Count',
+            'transaction count': 'Transaction_Count',
+            'average order value': 'Average_Order_Value',
+            'return rate': 'Return_Rate'
+        }
 
-    # Mapping of dimension names to DataFrame columns
-    DIMENSION_MAP = {
-        'product category': 'Product_Category',
-        'region': 'Region',
-        'channel': 'Channel',
-        'product line': 'Product_Line',
-        'year': 'Year',
-        'month': 'Month',
-        'quarter': 'Quarter'
-    }
+        # Mapping of dimension names to DataFrame columns
+        DIMENSION_MAP = {
+            'product category': 'Product_Category',
+            'region': 'Region',
+            'channel': 'Channel',
+            'product line': 'Product_Line',
+            'year': 'Year',
+            'month': 'Month',
+            'quarter': 'Quarter'
+        }
 
-    # Check for breakdown or summary requests
-    try:
-        # Normalize the question
-        normalized_question = question.lower()
+        # Check for breakdown or summary requests
+        try:
+            # Normalize the question
+            normalized_question = question.lower()
 
-        # Check for breakdown or summary patterns
-        breakdown_match = re.search(r'(break\s*(?:down|up)|show|summarize)\s*(.+?)\s*by\s*(.+)', normalized_question)
-        if breakdown_match:
-            metric_phrase = breakdown_match.group(2).strip()
-            dimension_phrase = breakdown_match.group(3).strip()
+            # Check for breakdown or summary patterns
+            breakdown_match = re.search(r'(break\s*(?:down|up)|show|summarize)\s*(.+?)\s*by\s*(.+)', normalized_question)
+            if breakdown_match:
+                metric_phrase = breakdown_match.group(2).strip()
+                dimension_phrase = breakdown_match.group(3).strip()
 
-            # Find matching metric column
-            metric_col = next((
-                col for key, col in METRIC_MAP.items() 
-                if key in metric_phrase
-            ), None)
+                # Find matching metric column
+                metric_col = next((
+                    col for key, col in METRIC_MAP.items() 
+                    if key in metric_phrase
+                ), None)
 
-            # Find matching dimension column
-            dimension_col = next((
-                col for key, col in DIMENSION_MAP.items() 
-                if key in dimension_phrase
-            ), None)
+                # Find matching dimension column
+                dimension_col = next((
+                    col for key, col in DIMENSION_MAP.items() 
+                    if key in dimension_phrase
+                ), None)
 
-            # Perform breakdown if both metric and dimension are found
-            if metric_col and dimension_col:
-                # Group by the dimension and sum the metric
-                grouped_data = self.df.groupby(dimension_col)[metric_col].agg([
-                    ('Total', 'sum'), 
-                    ('Average', 'mean'), 
-                    ('Minimum', 'min'), 
-                    ('Maximum', 'max')
-                ]).reset_index()
+                # Perform breakdown if both metric and dimension are found
+                if metric_col and dimension_col:
+                    # Group by the dimension and sum the metric
+                    grouped_data = self.df.groupby(dimension_col)[metric_col].agg([
+                        ('Total', 'sum'), 
+                        ('Average', 'mean'), 
+                        ('Minimum', 'min'), 
+                        ('Maximum', 'max')
+                    ]).reset_index()
 
-                # Format the result
-                result = f"{metric_phrase.capitalize()} Breakdown by {dimension_phrase.capitalize()}:\n\n"
-                result += grouped_data.to_string(index=False, float_format='{:.2f}'.format) + "\n\n"
+                    # Format the result
+                    result = f"{metric_phrase.capitalize()} Breakdown by {dimension_phrase.capitalize()}:\n\n"
+                    result += grouped_data.to_string(index=False, float_format='{:.2f}'.format) + "\n\n"
 
-                # Add some insights
-                total_sum = grouped_data[('Total', '')].sum()
-                max_row = grouped_data.loc[grouped_data[('Total', '')].idxmax()]
-                min_row = grouped_data.loc[grouped_data[('Total', '')].idxmin()]
+                    # Add some insights
+                    total_sum = grouped_data[('Total', '')].sum()
+                    max_row = grouped_data.loc[grouped_data[('Total', '')].idxmax()]
+                    min_row = grouped_data.loc[grouped_data[('Total', '')].idxmin()]
 
-                result += "Key Insights:\n"
-                result += f"- Total {metric_phrase}: ${total_sum:,.2f}\n"
-                result += f"- Highest {metric_phrase}: ${max_row[('Total', '')]:,.2f} for {max_row[dimension_col]}\n"
-                result += f"- Lowest {metric_phrase}: ${min_row[('Total', '')]:,.2f} for {min_row[dimension_col]}\n"
+                    result += "Key Insights:\n"
+                    result += f"- Total {metric_phrase}: ${total_sum:,.2f}\n"
+                    result += f"- Highest {metric_phrase}: ${max_row[('Total', '')]:,.2f} for {max_row[dimension_col]}\n"
+                    result += f"- Lowest {metric_phrase}: ${min_row[('Total', '')]:,.2f} for {min_row[dimension_col]}\n"
 
-                return result
+                    return result
 
-        # Get relevant context for this specific question
-        relevant_context = self.get_relevant_context(question)
+            # Get relevant context for this specific question
+            relevant_context = self.get_relevant_context(question)
 
-        # Prepare the prompt
-        prompt = f"""
+            # Prepare the prompt
+            prompt = f"""
 Based on the following data and documentation, please answer this question:
 "{question}"
 
@@ -418,44 +418,44 @@ Context information:
 
 Please provide a clear, accurate answer based only on the information provided. 
 If the answer cannot be determined from the information, please state that clearly.
-        """
+            """
 
-        # Call OpenAI API directly with requests
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"
-        }
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system",
-                 "content": "You are a data analyst who provides accurate, helpful answers based on the provided context."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.3,
-            "max_tokens": 1000
-        }
+            # Call OpenAI API directly with requests
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"
+            }
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system",
+                     "content": "You are a data analyst who provides accurate, helpful answers based on the provided context."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.3,
+                "max_tokens": 1000
+            }
 
-        # Make API call
-        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-        response.raise_for_status()
-        response_data = response.json()
+            # Make API call
+            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+            response.raise_for_status()
+            response_data = response.json()
 
-        # Track token usage if session state has token tracker
-        if hasattr(st.session_state, 'token_tracker'):
-            st.session_state.token_tracker.track_api_call(
-                prompt=prompt,
-                response=response_data,
-                model=self.model
-            )
+            # Track token usage if session state has token tracker
+            if hasattr(st.session_state, 'token_tracker'):
+                st.session_state.token_tracker.track_api_call(
+                    prompt=prompt,
+                    response=response_data,
+                    model=self.model
+                )
 
-        return response_data["choices"][0]["message"]["content"]
+            return response_data["choices"][0]["message"]["content"]
 
-    except Exception as e:
-        print(f"Error calling OpenAI API: {e}")
-        
-        # Fallback error handling
-        return f"""
+        except Exception as e:
+            print(f"Error calling OpenAI API: {e}")
+            
+            # Fallback error handling
+            return f"""
 I apologize, but I'm unable to fully answer your question. 
 The system encountered an error while processing your request.
 
@@ -466,6 +466,13 @@ Possible reasons:
 
 If you'd like, please rephrase your question or be more specific about the information you're looking for.
 """
+
+    def _summarize_sop_content(self):
+        """Create a summary of SOP content."""
+        summary = ""
+        for name, content in self.sop_content.items():
+            summary += f"From {name}:\n{self._summarize_text(content, 200)}\n\n"
+        return summary
 
     def generate_report(self, report_type):
         """
@@ -530,10 +537,3 @@ Relevant SOPs and documentation:
         except Exception as e:
             print(f"Error calling OpenAI API: {e}")
             raise
-
-    def _summarize_sop_content(self):
-        """Create a summary of SOP content."""
-        summary = ""
-        for name, content in self.sop_content.items():
-            summary += f"From {name}:\n{self._summarize_text(content, 200)}\n\n"
-        return summary
