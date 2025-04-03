@@ -11,6 +11,9 @@ from token_usage_tracker import TokenUsageTracker
 # Import the DataAnalyzer class
 from data_analyzer_fixed import DataAnalyzer
 
+# Import the chat interface
+from chat_interface import add_chat_to_ask_questions_tab
+
 # Set page configuration
 st.set_page_config(
     page_title="Excel Data Analyzer with OpenAI",
@@ -102,6 +105,8 @@ def main():
         st.markdown("### Options")
         show_excel_preview = st.checkbox("Show Excel Preview", value=True)
         show_raw_context = st.checkbox("Show Raw Context (Advanced)", value=False)
+        # Store in session state for use in chat interface
+        st.session_state.show_raw_context = show_raw_context
 
         # About section
         st.markdown("### About")
@@ -406,82 +411,10 @@ def main():
                 ):
                     st.success("Analysis downloaded!")
 
-        # Tab 2: Ask Questions
+        # Tab 2: Ask Questions - UPDATED to use the chat interface
         with tab2:
-            st.write("Ask specific questions about your data and get AI-powered answers.")
-
-            # Question input
-            question = st.text_area("Your Question",
-                                    placeholder="E.g., What are the top performing products? What patterns exist in the monthly data?",
-                                    help="Be as specific as possible for better results.")
-
-            # Add option to use filtered data
-            use_filtered_data = st.checkbox("Use filtered data for questions",
-                                            value=st.session_state.get('filters_applied', False),
-                                            help="When checked, questions will be answered based only on the filtered dataset.")
-
-            if st.button("Get Answer", key="get_answer_btn"):
-                if question:
-                    with st.spinner("Processing your question..."):
-                        try:
-                            # Handle filtered data if selected
-                            if use_filtered_data and 'filtered_data' in st.session_state:
-                                # Save filtered data to a temporary file
-                                temp_excel_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
-                                st.session_state.filtered_data.to_excel(temp_excel_file.name, index=False)
-                                temp_excel_file.close()
-
-                                # Create a temporary analyzer with the filtered data
-                                temp_analyzer = DataAnalyzer(
-                                    excel_path=temp_excel_file.name,
-                                    sop_dir=st.session_state.analyzer.sop_dir,
-                                    pdf_dir=st.session_state.analyzer.pdf_dir,
-                                    model=st.session_state.analyzer.model
-                                )
-
-                                # Get answer using the filtered data
-                                answer = temp_analyzer.answer_question(question)
-
-                                # Show the context used if advanced option selected
-                                if show_raw_context:
-                                    context = temp_analyzer.get_relevant_context(question)
-
-                                # Clean up the temporary file
-                                os.unlink(temp_excel_file.name)
-                            else:
-                                # Use the original analyzer
-                                answer = st.session_state.analyzer.answer_question(question)
-
-                                # Get context for display if needed
-                                if show_raw_context:
-                                    context = st.session_state.analyzer.get_relevant_context(question)
-
-                            st.markdown("### Answer")
-                            st.markdown(answer)
-
-                            # Add note about filtered data if applicable
-                            if use_filtered_data and 'filtered_data' in st.session_state:
-                                st.info(
-                                    f"This answer is based on the filtered dataset ({len(st.session_state.filtered_data)} rows) rather than the complete dataset ({len(st.session_state.excel_data)} rows).")
-
-                            # Download button for answer
-                            if st.download_button(
-                                    label="Download Answer",
-                                    data=f"Question: {question}\n\n{answer}",
-                                    file_name="question_answer.txt",
-                                    mime="text/plain",
-                                    key="download_answer_button"
-                            ):
-                                st.success("Answer downloaded!")
-
-                            # Show the context used if advanced option selected
-                            if show_raw_context:
-                                with st.expander("View Context Used"):
-                                    st.text(context)
-                        except Exception as e:
-                            st.error(f"Error processing question: {str(e)}")
-                else:
-                    st.warning("Please enter a question first.")
+            # Use the new chat interface instead of the old single-question interface
+            add_chat_to_ask_questions_tab()
 
         # Tab 3: Generate Reports
         with tab3:
