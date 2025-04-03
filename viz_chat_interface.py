@@ -3,6 +3,27 @@ import pandas as pd
 import os
 import requests
 import json
+import numpy as np
+
+# Custom JSON encoder to handle NumPy arrays and other special types
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+            np.int16, np.int32, np.int64, np.uint8,
+            np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+        if isinstance(obj, (np.float_, np.float16, np.float32, 
+            np.float64)):
+            return float(obj)
+        if isinstance(obj, (np.complex_, np.complex64, np.complex128)):
+            return {'real': obj.real, 'imag': obj.imag}
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        if isinstance(obj, np.datetime64):
+            return str(obj)
+        return json.JSONEncoder.default(self, obj)
 
 def add_viz_chat_interface(api_key, visualization_data=None, insights=None, data_df=None, fig=None):
     """
@@ -73,11 +94,24 @@ def extract_figure_data(fig):
                     "name": trace.name if hasattr(trace, 'name') else f"Trace {i}",
                 }
                 
-                # Extract x and y data if available
-                if hasattr(trace, 'x'):
-                    trace_info["x_data"] = trace.x[:10] if len(trace.x) > 10 else trace.x  # Limit to first 10 points
-                if hasattr(trace, 'y'):
-                    trace_info["y_data"] = trace.y[:10] if len(trace.y) > 10 else trace.y  # Limit to first 10 points
+                # Handle x and y data safely (without including raw data)
+                if hasattr(trace, 'x') and trace.x is not None:
+                    # Just mention that x data exists but don't include values
+                    trace_info["has_x_data"] = True
+                    # Get length safely
+                    try:
+                        trace_info["x_length"] = len(trace.x)
+                    except:
+                        trace_info["x_length"] = "unknown"
+                
+                if hasattr(trace, 'y') and trace.y is not None:
+                    # Just mention that y data exists but don't include values
+                    trace_info["has_y_data"] = True
+                    # Get length safely
+                    try:
+                        trace_info["y_length"] = len(trace.y)
+                    except:
+                        trace_info["y_length"] = "unknown"
                 
                 # Extract violin-specific data
                 if trace.type == 'violin':
@@ -131,10 +165,95 @@ def extract_figure_data(fig):
             4. Outliers shown as individual points beyond the whiskers
             """
         
+        # Convert to JSON-safe format using custom encoder
         return figure_data
         
     except Exception as e:
         return f"Error extracting figure data: {str(e)}"
+
+def analyze_violin_plot_data(data_df, viz_params):
+    """Extract KDE and distribution information from violin plot data"""
+    if not viz_params or not data_df is not None:
+        return "No data available for analysis"
+    
+    try:
+        params = viz_params.get("parameters", {})
+        if "x_column" in params and "y_column" in params:
+            x_col = params["x_column"]
+            y_col = params["y_column"]
+            
+            # Generate statistics by group
+            group_stats = data_df.groupby(x_col)[y_col].agg(['count', 'mean', 'median', 'std', 'min', 'max']).reset_index()
+            
+            # Calculate IQR and range for each group
+            results = []
+            kde_analysis = []
+            
+            for group in data_df[x_col].unique():
+                group_data = data_df[data_df[x_col] == group][y_col]
+                
+                # Calculate quartiles
+                q1 = group_data.quantile(0.25)
+                q3 = group_data.quantile(0.75)
+                iqr = q3 - q1
+                
+                # Calculate range
+                data_range = group_data.max() - group_data.min()
+                
+                # Calculate density metrics
+                count = len(group_data)
+                
+                # Simple proxy for KDE peak: how concentrated the data is around the median
+                median = group_data.median()
+                mean = group_data.mean()
+                std = group_data.std()
+                
+                # Values close to median indicate higher concentration
+                concentration = count / (std if std > 0 else 1)  # Higher value = more concentrated
+                
+                # Calculate width of middle 50% of data (IQR)
+                relative_concentration = iqr / data_range if data_range > 0 else 0  # Lower value = more concentrated
+                
+                # Estimate kde peak height (inversely related to std deviation)
+                kde_peak_estimate = 1 / (std if std > 0 else 1)  # Higher value = sharper peak
+                
+                kde_analysis.append({
+                    "group": group,
+                    "count": count,
+                    "mean": mean,
+                    "median": median,
+                    "std": std,
+                    "iqr": iqr,
+                    "range": data_range,
+                    "concentration": concentration,
+                    "relative_concentration": relative_concentration,
+                    "kde_peak_estimate": kde_peak_estimate
+                })
+            
+            # Find the group with highest concentration (proxy for highest KDE)
+            if kde_analysis:
+                highest_kde_group = max(kde_analysis, key=lambda x: x["kde_peak_estimate"])
+                lowest_kde_group = min(kde_analysis, key=lambda x: x["kde_peak_estimate"])
+                
+                kde_insights = f"""
+                KDE Analysis (Kernel Density Estimation):
+                - Group with highest estimated KDE peak (most concentrated): {highest_kde_group['group']}
+                - Group with lowest estimated KDE peak (most spread out): {lowest_kde_group['group']}
+                
+                KDE metrics per group:
+                """
+                
+                for group_data in kde_analysis:
+                    kde_insights += f"- {group_data['group']}: estimated peak height = {group_data['kde_peak_estimate']:.2f}, data concentration = {group_data['concentration']:.2f}\n"
+                
+                return kde_insights
+            
+            return "KDE analysis completed but no notable patterns found."
+            
+        return "Missing required columns for violin plot analysis"
+    
+    except Exception as e:
+        return f"Error analyzing violin plot data: {str(e)}"
 
 def generate_viz_response(question, api_key, visualization_data=None, insights=None, data_df=None, fig=None):
     """Generate a response about visualization and insights"""
@@ -151,7 +270,16 @@ def generate_viz_response(question, api_key, visualization_data=None, insights=N
         figure_details = ""
         if fig:
             figure_data = extract_figure_data(fig)
-            figure_details = f"\nDetailed Figure Information:\n{json.dumps(figure_data, indent=2)}\n"
+            # Convert to string safely, avoiding JSON serialization issues
+            if isinstance(figure_data, dict):
+                try:
+                    figure_str = json.dumps(figure_data, indent=2, cls=NumpyEncoder)
+                    figure_details = f"\nDetailed Figure Information:\n{figure_str}\n"
+                except:
+                    # Fallback to simpler representation if JSON serialization fails
+                    figure_details = f"\nDetailed Figure Information: {str(figure_data)}\n"
+            else:
+                figure_details = f"\nDetailed Figure Information: {str(figure_data)}\n"
         
         # Add insights if available
         insights_context = ""
@@ -191,6 +319,10 @@ def generate_viz_response(question, api_key, visualization_data=None, insights=N
                     grouped_stats = data_df.groupby(x_col)[y_col].agg(['mean', 'median', 'min', 'max', 'std']).reset_index()
                     data_context += grouped_stats.to_string(index=False) + "\n"
                     
+                    # Add KDE analysis
+                    kde_analysis = analyze_violin_plot_data(data_df, visualization_data)
+                    data_context += f"\n{kde_analysis}\n"
+                    
                     # Add kernel density info
                     data_context += f"\nThe violin plot shows the kernel density estimation (KDE) for each {x_col} category. "
                     data_context += f"Wider parts of the violin indicate higher density of data points at those {y_col} values. "
@@ -211,6 +343,11 @@ def generate_viz_response(question, api_key, visualization_data=None, insights=N
             - The shape shows how the data is distributed
             - Categories with higher peaks in their KDE have more concentrated data at those values
             - Categories with wider KDEs have more spread-out distributions
+            
+            Understanding KDE peak height:
+            - A high, narrow peak in the KDE indicates many data points concentrated at a specific value
+            - The group with the highest KDE peak has the most concentrated distribution
+            - Groups with lower, wider KDEs have more evenly spread distributions
             """
         
         # Prepare the prompt
